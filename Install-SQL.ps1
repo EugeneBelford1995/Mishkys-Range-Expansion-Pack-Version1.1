@@ -6,17 +6,18 @@
 #Re-work this so it runs via Invoke-Command -VMName "Research-DC" -FileName ".\Install-SQL.ps1"
 #Should install SQL Server on Dave-PC at that point using research\break.glass creds
 
-#Moved to Create-Cousin
 #Expand-Archive -Path "C:\SQL2022.zip" -DestinationPath "C:\"
 
-# Install PowerShell Desired State Configuration (DSC)
+#Install PowerShell Desired State Configuration (DSC)
 #Install-Module -Name SqlServerDsc
-Import-Module SqlServerDsc
+#Import-Module -Name PSDesiredStateConfiguration
+#Import-Module -Name PSDscResources
+#Import-Module -Name PowerShellGet
+Import-Module -Name SqlServerDsc
 
 #DSC
 Configuration InstallSQLServer
 {
-Import-DscResource –ModuleName PSDesiredStateConfiguration
 Import-DscResource -ModuleName SqlServerDsc
    Node "Research-SQL"
     {

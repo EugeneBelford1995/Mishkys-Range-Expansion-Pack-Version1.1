@@ -220,14 +220,14 @@ Invoke-Command -VMName "Dave-PC" -FilePath '.\VMConfig (ResearchClientII P3).ps1
 [string]$userPassword = 'SuperSecureLocalPassword123!@#'
 # Convert to SecureString
 [securestring]$secStringPassword = ConvertTo-SecureString $userPassword -AsPlainText -Force
-[pscredential]$DavePCLocalCredObject = New-Object System.Management.Automation.PSCredential ($userName, $secStringPassword)
+[pscredential]$SQLLocalCredObject = New-Object System.Management.Automation.PSCredential ($userName, $secStringPassword)
 
 Config-NIC -VMName "Research-SQL" -IP "148"
 
 #Set-Location "C:\VM_Stuff_Share\Lab_Version1.1\CousinDomain"
 Invoke-Command -VMName "Research-SQL" -FilePath '.\VMConfig (ResearchSQL P1).ps1' -Credential $InitialCredObject  #Configs IPv4, disables IPv6, renames the VM
 Start-Sleep -Seconds 120
-Invoke-Command -VMName "Research-SQL" -FilePath '.\VMConfig (ResearchClient P2).ps1' -Credential $DavePCLocalCredObject    #Joins research.local
+Invoke-Command -VMName "Research-SQL" -FilePath '.\VMConfig (ResearchClient P2).ps1' -Credential $SQLLocalCredObject    #Joins research.local
 Start-Sleep -Seconds 120
 
 Enable-VMIntegrationService "Guest Service Interface" -VMName "Research-SQL"
@@ -235,8 +235,19 @@ Copy-VMFile "Research-SQL" -SourcePath ".\SQL2022.zip" -DestinationPath "C:\SQL2
 Invoke-Command -VMName "Research-SQL" {Expand-Archive -Path "C:\SQL2022.zip" -DestinationPath "C:\"} -Credential $CousinDomainAdminCredObject
 
 #Install PowerShell Desired State Configuration (DSC)
-Invoke-Command -VMName "Research-SQL" {Install-Module -Name SqlServerDsc} -Credential $CousinDomainAdminCredObject   #Installs the Desired State Configuration module
+$osInfo = Get-ComputerInfo 
+if($osInfo.OsName -like "*Hyper-V Server*") 
+{
+Write-Output "Using the existing mof config file to install MSSQL"
+Invoke-Command -VMName "Research-SQL" {Install-Module -Name PSDesiredStateConfiguration; Install-Module -Name PSDscResources; Install-Module -Name PowerShellGet; Install-Module -Name SqlServerDsc} -Credential $CousinDomainAdminCredObject   #Installs the Desired State Configuration module
+Copy-VMFile "Research-SQl" -SourcePath ".\Research-SQL.mof" -DestinationPath "C:\DSC\Research-SQL.mof" -CreateFullPath -FileSource Host
+Invoke-Command "Research-SQL" {Start-DscConfiguration -Path "C:\DSC" -Wait -Verbose -Force} -Credential $CousinDomainAdminCredObject     #Uses DSC to setup MSSQL on Research-SQL
+}
+else 
+{
+Write-Output "Creating DSC mof config file on the VM and then installing MSSQL"
 Invoke-Command -VMName "Research-SQL" -FilePath ".\Install-SQL.ps1" -Credential $CousinDomainAdminCredObject         #Uses DSC to setup MSSQL on Research-SQL
+}
 Invoke-Command -VMName "Research-SQL" -FilePath ".\Config-SQL.ps1" -Credential $CousinDomainAdminCredObject          #[mis]configs Research-SQL IOT put it in the escalation path
 
 } #Close the Create-CousinDomain function
