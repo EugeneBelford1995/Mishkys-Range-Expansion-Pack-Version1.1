@@ -8,3 +8,4 @@ $volumeInfo = $mountResult | Get-Volume
 $driveInfo = Get-PSDrive -Name $volumeInfo.DriveLetter
 Copy-Item -Path ( Join-Path -Path $driveInfo.Root -ChildPath '*' ) -Destination "C:\VM_Stuff_Share\SQL2022" -Recurse
 Dismount-DiskImage -ImagePath 'C:\VM_Stuff_Share\ISOs\SQLServer2022-x64-ENU.iso'
+Compress-Archive -Path "C:\VM_Stuff_Share\SQL2022\*" -DestinationPath "C:\VM_Stuff_Share\Lab_Version1.1\CousinDomain\SQL2022.zip"
