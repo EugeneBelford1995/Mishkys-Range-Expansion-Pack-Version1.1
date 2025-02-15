@@ -63,5 +63,27 @@ Invoke-Command -VMName "Research-SQL" {Restart-Computer -Force} -Credential $Cou
 #Create inboxes for Dave & SQL.Admin and delegate Dave control over SQL.Admin's inbox. Additionally, this revokes Dave's password reset right on SQL.Admin.
 Invoke-Command -VMName "Research-SQL" -FilePath ".\Config-Exchange.ps1" -Credential $CousinDomainAdminCredObject
 
+#Get the IP scheme, GW, & CIDR from Research-DC. Research-DC got it's config from DHCP and then changed its own last octet to 140
+$NIC = Invoke-Command -VMName "Research-DC" {(Get-NetIPConfiguration).InterfaceAlias} -Credential $CousinDomainAdminCredObject
+$DC_GW = Invoke-Command -VMName "Research-DC" {(Get-NetIPConfiguration -InterfaceAlias (Get-NetAdapter).InterfaceAlias).IPv4DefaultGateway.NextHop} -Credential $CousinDomainAdminCredObject
+$DC_IP = Invoke-Command -VMName "Research-DC" {(Get-NetIPAddress | Where-Object {$_.InterfaceAlias -eq "$using:NIC"}).IPAddress} -Credential $CousinDomainAdminCredObject
+#$DC_Prefix = Invoke-Command -VMName "Research-DC" {(Get-NetIPAddress | Where-Object {$_.IPAddress -like "*172*"}).PrefixLength} -Credential $CousinDomainAdminCredObject
+$DC_Prefix = Invoke-Command -VMName "Research-DC" {(Get-NetIPAddress | Where-Object {$_.InterfaceAlias -eq "$using:NIC"}).PrefixLength} -Credential $CousinDomainAdminCredObject
+$FirstOctet =  $DC_IP.Split("\.")[0]
+$SecondOctet = $DC_IP.Split("\.")[1]
+$ThirdOctet = $DC_IP.Split("\.")[2]
+$NetworkPortion = "$FirstOctet.$SecondOctet.$ThirdOctet"
+$Gateway = $DC_GW
+
+#Create DNS records for Exchange
+Invoke-Command -VMName "Research-DC" {Add-DnsServerResourceRecordA -Name "mail" -ZoneName "research.local" -IPv4Address "$using:NetworkPortion.148" -TimeToLive 01:00:00 -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+Invoke-Command -VMName "Research-DC" {Add-DnsServerResourceRecordMX -ZoneName "research.local" -Name "@" -MailExchange "mail.research.local" -Preference 10 -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+Invoke-Command -VMName "Research-DC" {Add-DnsServerResourceRecordCName -Name "autodiscover" -ZoneName "research.local" -HostNameAlias "mail.research.local" -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+#Invoke-Command -VMName "Research-DC" {Add-DnsServerResourceRecordSRV -Name "_autodiscover._tcp" -ZoneName "research.local" -DomainName "mail.research.local" -Priority 0 -Weight 0 -Port 443 -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+
+#Create a reverse lookup zone, then create the record for Exchange
+Invoke-Command -VMName "Research-DC" {Add-DnsServerPrimaryZone -NetworkID "$using:NetworkPortion/$using:DC_Prefix" -ReplicationScope "Forest" -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+Invoke-Command -VMName "Research-DC" {Add-DnsServerResourceRecordPtr -ZoneName "$using:ThirdOctet.$using:SecondOctet.$using:FirstOctet.in-addr.arpa" -Name "Research-SQL" -PtrDomainName "mail.research.local" -ComputerName "Research-DC"} -Credential $CousinDomainAdminCredObject
+
 #Send a password reset email to SQL.Admin & set SQL.Admin to require password change on next login
 Invoke-Command -VMName "Research-SQL" -FilePath ".\Send-Email.ps1" -Credential $CousinDomainAdminCredObject
